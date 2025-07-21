@@ -23,3 +23,22 @@ resource "aws_instance" "multiple" {
   }
 }
 
+
+
+
+
+
+variable "instances" {
+  default = ["dev", "test", "prod"]
+}
+
+resource "aws_instance" "instance" {
+  ami = "ami-0150ccaf51ab55a51"
+  instance_type = "t2.micro"
+  key_name = "my-kp"
+  count = length(var.instances)
+  tags = {
+    Name = var.instances[count.index]
+  }
+}
+
