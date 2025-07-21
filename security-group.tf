@@ -47,13 +47,38 @@ variable "name" {
   default = "my-instance"
 }
 
-resource "aws_instance" "instance"{
+variable "instances" { 
+  default = ["test","prod","dev"]
+}
+
+
+
+resource "aws_instance" "instance" {
   ami = "ami-0150ccaf51ab55a51"
   instance_type = "t2.micro"
+  count = length(var.instances)
   key_name = "my-kp"
   vpc_security_group_ids = [aws_security_group.main.id]
   tags = {
-    name = "${var.name}"
+    name = var.instances[count.index]
   }
+}
+
+
+
+#outputs
+
+output "security_group_id" {
+  value = "${aws_security_group.main.id}"
+}
+output "sg_id" {
+  value = "${aws_security_group.practice.id}"
+}
+
+
+
+
+output "instance_id" {
+  value = [for i in aws_instance.instance : i.id ]
 }
 
