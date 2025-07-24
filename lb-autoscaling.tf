@@ -28,6 +28,24 @@ variable "az" {
   default = ["us-east-1a", "us-east-1b","us-east-1c"]
 }
 
+resource "aws_route_table" "rt" {
+  vpc_id = aws_vpc.my_vpc.id
+
+  route {
+    cidr_block = "0.0.0.0/0"
+    gateway_id = aws_internet_gateway.igw.id
+  }
+
+  tags = {
+    Name = "public-rt"
+  }
+}
+
+resource "aws_route_table_association" "rta" {
+  count = length(aws_subnet.sub)
+  subnet_id = aws_subnet.sub[count.index].id
+  route_table_id = aws_route_table.rt.id
+}
 
 
 resource "aws_subnet" "sub" {
@@ -72,36 +90,27 @@ resource "aws_security_group" "sg" {
 }
 
 
-resource "aws_instance" "instance" {
-  ami = "ami-0cbbe2c6a1bb2ad63"
-  count = 3
-  vpc_security_group_ids = [aws_security_group.sg.id]
-  instance_type = "t2.micro"
-  key_name = "my-kp"
-  subnet_id = aws_subnet.sub[count.index].id
-  tags = {
-    Name = "my-instance-${count.index + 1}"
-  }
-}
-
-
 
 
 resource "aws_lb_target_group" "tg" {
-  name = "my-tg"
-  port = 80
+  name     = "my-tg"
+  port     = 80
   protocol = "HTTP"
-  vpc_id = aws_vpc.my_vpc.id
+  vpc_id   = aws_vpc.my_vpc.id
+
+  health_check {
+    protocol            = "HTTP"
+    path                = "/"
+    interval            = 30
+    timeout             = 5
+    healthy_threshold   = 2
+    unhealthy_threshold = 2
+    matcher             = "200-399"
+  }
+
   tags = {
     Name = "my-tg"
   }
-}
-
-resource "aws_lb_target_group_attachment" "test" {
-  count = length(aws_instance.instance)
-  target_group_arn = aws_lb_target_group.tg.arn
-  target_id = aws_instance.instance[count.index].id
-  port = 80
 }
 
 resource "aws_lb" "lb" {
@@ -126,4 +135,57 @@ resource "aws_lb_listener" "end" {
   }
 }
 
+resource "aws_launch_template" "fool" {
+  name_prefix = "foolbar"
+  image_id = "ami-0cbbe2c6a1bb2ad63"
+  instance_type = "t2.micro"
+  key_name      = "my-kp"
+
+
+  network_interfaces {
+    associate_public_ip_address = true
+    security_groups             = [aws_security_group.sg.id]
+  }
+  user_data = base64encode(<<-EOF
+              #!/bin/bash
+              sudo yum install -y httpd -y
+              sudo systemctl enable httpd
+              sudo systemctl start httpd
+              echo "<h1>Hello from ASG instance</h1>" > /var/www/html/index.html
+            EOF
+  )
+
+  tag_specifications {
+    resource_type = "instance"
+    tags = {
+      Name = "asg-instance"
+    }
+  }
+}
+
+
+resource "aws_autoscaling_group" "asg" {
+  name = "my-asg"
+  max_size = 4
+  min_size = 2
+  health_check_grace_period = 100
+  health_check_type = "ELB"
+  desired_capacity = 3
+  force_delete = true
+  target_group_arns = [aws_lb_target_group.tg.arn]
+  vpc_zone_identifier = [for subnet in aws_subnet.sub : subnet.id]
+
+
+  launch_template {
+    id = aws_launch_template.fool.id
+  }
+
+}
+
+
+
+
+output "alb_dns_name" {
+  value = aws_lb.lb.dns_name
+}
 
