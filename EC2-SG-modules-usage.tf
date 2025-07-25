@@ -1,4 +1,4 @@
-module "test" {
+module "sg" {
   source = "./Security-group"
   vpc_id = "vpc-0f6d109b87e18a10b"
   sg_name = "test-sg"
@@ -15,5 +15,15 @@ module "test" {
   tp_out = 0
   cidr_out = ["0.0.0.0/0"]
   name = "test-sg"
+}
+
+module "test" {
+  source = "./ec2"
+  ami_id = "ami-08a6efd148b1f7504"
+  insta_type = "t2.micro"
+  kp = "my-kp"
+  no = 3
+  name = "test-server"
+  security_group_ids = [module.sg.sg_id]
 }
 
